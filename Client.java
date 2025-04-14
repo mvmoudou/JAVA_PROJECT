@@ -6,86 +6,79 @@ import java.net.*;
 public class Client {
     private static final String SERVER_IP = "localhost";
     private static final int SERVER_PORT = 1234;
-    private static final int BLOCK_SIZE = 1024;
+    public static final int BLOCK_SIZE = 10;
     private static final String DOWNLOAD_DIRECTORY = "Version_1/downloads";
 
     public static void main(String[] args) {
         String requestedFile = null;
+        int dc = 1; // Nombre de connexions par défaut
 
-        // Lire le nom du fichier à partir des arguments
+        // Lire les arguments
         for (String arg : args) {
             if (arg.startsWith("--file=")) {
                 requestedFile = arg.substring("--file=".length());
+            } else if (arg.startsWith("--DC=")) {
+                dc = Integer.parseInt(arg.substring("--DC=".length()));
             }
         }
 
         if (requestedFile == null) {
-            System.out.println(" Erreur : aucun fichier spécifié avec --file=...");
+            System.out.println("Erreur : veuillez spécifier un fichier avec --file=...");
             return;
         }
 
         try {
+            // Étape 1 : connexion initiale pour obtenir la taille du fichier
             Socket socket = new Socket(SERVER_IP, SERVER_PORT);
-            System.out.println(" Connexion établie avec le serveur.");
-
             DataInputStream dis = new DataInputStream(socket.getInputStream());
             DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
 
-            // Lire la liste des fichiers
-            int fileCount = dis.readInt();
-            for (int i = 0; i < fileCount; i++) {
-                dis.readUTF();
-            }
-
-            // Envoyer le nom du fichier
+            // Envoyer juste le nom du fichier (pas de blocIndex)
             dos.writeUTF(requestedFile);
             dos.flush();
 
-            // Lire la taille du fichier
-            long fileSize = dis.readLong();
-
-            // Préparer dossier
-            File downloadFolder = new File(DOWNLOAD_DIRECTORY);
-            if (!downloadFolder.exists()) {
-                downloadFolder.mkdirs();
-            }
-
-            File downloadedFile = new File(DOWNLOAD_DIRECTORY + "/" + requestedFile);
-            FileOutputStream fos = new FileOutputStream(downloadedFile);
-
-            byte[] buffer = new byte[BLOCK_SIZE];
-            long totalRead = 0;
-
-            while (totalRead < fileSize) {
-                int toRead = (int) Math.min(buffer.length, fileSize - totalRead);
-                int bytesRead = dis.read(buffer, 0, toRead);
-                if (bytesRead == -1) break;
-                fos.write(buffer, 0, bytesRead);
-                totalRead += bytesRead;
-            }
-
-            fos.close();
-            System.out.println(" Fichier téléchargé : " + requestedFile);
-
-            // Envoi MD5
-            String md5Client = Digest.computeMD5(downloadedFile);
-            System.out.println(" MD5 client : " + md5Client);
-            dos.writeUTF(md5Client);
-            dos.flush();
-
-            // Réponse serveur
-            String serverResponse = dis.readUTF();
-            System.out.println(" Réponse du serveur : " + serverResponse);
-            if ("MD5_OK".equals(serverResponse)) {
-                System.out.println("Intégrité vérifiée.");
-            } else {
-                System.out.println(" Problème d'intégrité.");
-            }
-
+            long fileSize = dis.readLong(); // taille totale
+            // Indiquer qu'on demande juste la taille (flag = -1)
+            dos.writeInt(-1); // flag spécial
+            dos.writeUTF(requestedFile);
             dis.close();
             dos.close();
             socket.close();
-            System.out.println("Connexion terminée.");
+
+            System.out.println("Taille du fichier : " + fileSize + " octets");
+
+            // Étape 2 : calcul du nombre de blocs
+            int totalBlocs = (int) Math.ceil((double) fileSize / BLOCK_SIZE);
+            byte[][] blocs = new byte[totalBlocs][];
+
+            // Étape 3 : lancer les threads pour télécharger les blocs
+            Thread[] threads = new Thread[totalBlocs];
+            for (int i = 0; i < totalBlocs; i++) {
+                threads[i] = new Thread(new BlocTelecharge(requestedFile, i, BLOCK_SIZE, blocs));
+                threads[i].start();
+            }
+
+            // Étape 4 : attendre la fin des threads
+            for (Thread t : threads) {
+                t.join();
+            }
+
+            // Étape 5 : assembler les blocs dans le fichier final
+            File downloadFolder = new File(DOWNLOAD_DIRECTORY);
+            if (!downloadFolder.exists()) downloadFolder.mkdirs();
+
+            File outputFile = new File(DOWNLOAD_DIRECTORY + "/" + requestedFile);
+            FileOutputStream fos = new FileOutputStream(outputFile);
+            for (int i = 0; i < blocs.length; i++) {
+                fos.write(blocs[i]);
+            }
+            fos.close();
+
+            System.out.println("Fichier reconstruit avec succès : " + outputFile.getName());
+
+            // Étape 6 : vérification MD5
+            String md5 = Digest.computeMD5(outputFile);
+            System.out.println("MD5 client : " + md5);
 
         } catch (Exception e) {
             e.printStackTrace();

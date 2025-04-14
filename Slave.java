@@ -15,68 +15,87 @@ public class Slave implements Runnable {
         try {
             DataInputStream dis = new DataInputStream(clientSocket.getInputStream());
             DataOutputStream dos = new DataOutputStream(clientSocket.getOutputStream());
-
-            File folder = new File(Serveur.FILES_DIRECTORY);
-            if (!folder.exists()) folder.mkdirs();
-
-            File[] files = folder.listFiles();
-            if (files != null) {
-                dos.writeInt(files.length);
-                for (File file : files) {
-                    dos.writeUTF(file.getName());
-                }
-            } else {
-                dos.writeInt(0);
-            }
-
-            System.out.println(" Nombre de fichiers à envoyer : " + (files != null ? files.length : 0));
-
+    
             String fileName = dis.readUTF();
-            File requestedFile = new File(Serveur.FILES_DIRECTORY, fileName);
-
-            if (!requestedFile.exists()) {
+            File file = new File(Serveur.FILES_DIRECTORY, fileName);
+    
+            if (!file.exists()) {
                 dos.writeUTF("ERREUR: Fichier non trouvé.");
                 clientSocket.close();
                 return;
             }
-
-            // Envoyer la taille du fichier
-            long fileSize = requestedFile.length();
-            dos.writeLong(fileSize);
-
-            // Envoyer le fichier
-            FileInputStream fis = new FileInputStream(requestedFile);
-            byte[] buffer = new byte[Serveur.BLOCK_SIZE];
-            int bytesRead;
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                dos.write(buffer, 0, bytesRead);
+    
+            // ✅ ESSAYER de lire un entier (numéro de bloc)
+            clientSocket.setSoTimeout(100); // délai court pour savoir si un entier arrive
+            int blockIndex = -1;
+            boolean isBlockRequest = false;
+    
+            try {
+                blockIndex = dis.readInt();
+                isBlockRequest = true;
+            } catch (IOException e) {
+                // Pas de numéro de bloc → mode normal
             }
-
-            fis.close();
-            System.out.println(" Fichier envoyé : " + fileName);
-
-            // Lire le MD5 du client
-            String md5Client = dis.readUTF();
-            String md5Server = Digest.computeMD5(requestedFile);
-            System.out.println(" MD5 client : " + md5Client);
-            System.out.println(" MD5 serveur : " + md5Server);
-
-            if (md5Server.equals(md5Client)) {
-                dos.writeUTF("MD5_OK");
+    
+            if (isBlockRequest) {
+                // 🔹 Mode DC (envoi d’un bloc spécifique)
+                long fileLength = file.length();
+                long skipBytes = (long) blockIndex * Serveur.BLOCK_SIZE;
+    
+                if (skipBytes >= fileLength) {
+                    dos.writeInt(-1);
+                    clientSocket.close();
+                    return;
+                }
+    
+                FileInputStream fis = new FileInputStream(file);
+                fis.skip(skipBytes);
+    
+                int bytesToSend = (int) Math.min(Serveur.BLOCK_SIZE, fileLength - skipBytes);
+                byte[] buffer = new byte[bytesToSend];
+                int read = fis.read(buffer);
+    
+                dos.writeInt(read);
+                dos.write(buffer, 0, read);
                 dos.flush();
-                System.out.println(" Client a bien reçu le fichier.");
+    
+                System.out.println("Bloc " + blockIndex + " envoyé.");
+                fis.close();
             } else {
-                dos.writeUTF("MD5_FAIL");
-                dos.flush();
-                System.out.println(" Erreur d'intégrité.");
+                // 🔹 Mode classique (fichier entier)
+                dos.writeLong(file.length());
+                FileInputStream fis = new FileInputStream(file);
+                byte[] buffer = new byte[Serveur.BLOCK_SIZE];
+                int bytesRead;
+                while ((bytesRead = fis.read(buffer)) != -1) {
+                    dos.write(buffer, 0, bytesRead);
+                }
+                fis.close();
+    
+                System.out.println("Fichier envoyé : " + fileName);
+    
+                // Vérifier MD5
+                String md5Client = dis.readUTF();
+                String md5Server = Digest.computeMD5(file);
+                System.out.println(" MD5 client : " + md5Client);
+                System.out.println(" MD5 serveur : " + md5Server);
+    
+                if (md5Server.equals(md5Client)) {
+                    dos.writeUTF("MD5_OK");
+                    System.out.println("Client a bien reçu le fichier.");
+                } else {
+                    dos.writeUTF("MD5_FAIL");
+                    System.out.println("Erreur d'intégrité.");
+                }
             }
-
+    
             dis.close();
             dos.close();
             clientSocket.close();
-
+    
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+    
 }
