@@ -2,10 +2,12 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.logging.Logger;
 
 public class Client {
     private static final int tailleBloc = 1024;
     private static final int Dc = 4; // nombre de téléchargements parallèles
+    private static final Logger logger = Log.setup("Client", "client.log");
     
     public static void main(String[] args) {
         try (
