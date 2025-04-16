@@ -8,7 +8,7 @@ public class BlocDownloader implements Callable<byte[]> {
     private final int serverPort;
     private final int fileIndex;
     private final int blocIndex;
-    private static final Logger logger = Log.setup("Client", "client.log");
+    private static final Logger logger = Log.setup("BlocDownloader", "blocdownloader.log");
 
     public BlocDownloader(String serverAddress, int serverPort, int fileIndex, int blocIndex) {
         this.serverAddress = serverAddress;

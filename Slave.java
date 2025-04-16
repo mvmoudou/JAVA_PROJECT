@@ -8,12 +8,16 @@ public class Slave implements Runnable {
     private File[] files;
     private static final int tailleBloc = 1024; // Taille d'un bloc de téléchargement (en octets)
     private Set<String> trustedClients;
-    private static final Logger logger = Log.setup("Client", "client.log");
+    private static final Logger logger = Log.setup("Slave", "slave.log");
+    private int T;
+    private double P;
 
-    public Slave(Socket socket, File[] files, Set<String> trustedClients) {
+    public Slave(Socket socket, File[] files, Set<String> trustedClients, int T, double P) {
         this.socket = socket;
         this.files = files;
         this.trustedClients = trustedClients;
+        this.T = T; // Nombre de téléchargements simultanés
+        this.P = P; // Probabilité de corruption
     }
 
     @Override

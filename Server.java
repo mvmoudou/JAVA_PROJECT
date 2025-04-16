@@ -15,7 +15,7 @@ public class Server {
     private ServerSocket server;
     private File[] files;
     private final Set<String> trustedClients = Collections.synchronizedSet(new HashSet<>());
-    private static final Logger logger = Log.setup("Client", "client.log");
+    private static final Logger logger = Log.setup("Server", "server.log");
 
 
     public Server(int port, int poolSize) {
@@ -33,9 +33,11 @@ public class Server {
     }
 
     public void manageRequest() {
+        int T = 5;
+        double P = 0.3;
         try {
             while(true) {
-                this.pool.execute(new Slave(server.accept(), this.files, this.trustedClients));
+                this.pool.execute(new Slave(server.accept(), this.files, this.trustedClients, T, P));
                 logger.info("Un client s'est connecte au serveur");
                 System.out.println("Un client s'est connecte au serveur");
             }
