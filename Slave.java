@@ -29,6 +29,7 @@ public class Slave implements Runnable {
             } else if (commande.startsWith("REQUIRE")) {
                 // Si la commande est de type "REQUIRE", on gère le téléchargement d'un bloc
                 handleDownload(commande, outputClient);
+                return;
             }
 
             String hashCommande = inputClient.readUTF();
@@ -68,7 +69,9 @@ public class Slave implements Runnable {
             System.out.println("Le fichier a bien été téléchargé et vérifié.");
             // Ajout du client à la liste des clients de confiance
             String clientInfo = socket.getInetAddress().getHostAddress();
-            trustedClients.add(clientInfo);
+            synchronized (trustedClients) {
+                trustedClients.add(clientInfo);
+            }            
             System.out.println("Ajouté à la liste des clients de confiance : " + clientInfo);
             outputClient.writeUTF("OK");
         } else {
@@ -113,4 +116,3 @@ public class Slave implements Runnable {
         return sb.toString();
     }
 }
-
