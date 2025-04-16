@@ -1,101 +1,116 @@
-package Version_1;
-
 import java.io.*;
 import java.net.*;
+import java.util.*;
 
 public class Slave implements Runnable {
-    private Socket clientSocket;
+    private Socket socket;
+    private File[] files;
+    private static final int tailleBloc = 1024; // Taille d'un bloc de téléchargement (en octets)
+    private Set<String> trustedClients;
 
-    public Slave(Socket clientSocket) {
-        this.clientSocket = clientSocket;
+    public Slave(Socket socket, File[] files, Set<String> trustedClients) {
+        this.socket = socket;
+        this.files = files;
+        this.trustedClients = trustedClients;
     }
 
     @Override
     public void run() {
-        try {
-            DataInputStream dis = new DataInputStream(clientSocket.getInputStream());
-            DataOutputStream dos = new DataOutputStream(clientSocket.getOutputStream());
-    
-            String fileName = dis.readUTF();
-            File file = new File(Serveur.FILES_DIRECTORY, fileName);
-    
-            if (!file.exists()) {
-                dos.writeUTF("ERREUR: Fichier non trouvé.");
-                clientSocket.close();
-                return;
+        try (
+            DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
+            DataInputStream inputClient = new DataInputStream(socket.getInputStream())
+        ) {
+            // Lire la demande du client
+            String commande = inputClient.readUTF();
+            
+            if ("LIST".equals(commande)) {
+                // Envoyer la liste des fichiers disponibles au client
+                sendFileList(outputClient);
+            } else if (commande.startsWith("REQUIRE")) {
+                // Si la commande est de type "REQUIRE", on gère le téléchargement d'un bloc
+                handleDownload(commande, outputClient);
             }
-    
-            // ✅ ESSAYER de lire un entier (numéro de bloc)
-            clientSocket.setSoTimeout(100); // délai court pour savoir si un entier arrive
-            int blockIndex = -1;
-            boolean isBlockRequest = false;
-    
-            try {
-                blockIndex = dis.readInt();
-                isBlockRequest = true;
-            } catch (IOException e) {
-                // Pas de numéro de bloc → mode normal
-            }
-    
-            if (isBlockRequest) {
-                // 🔹 Mode DC (envoi d’un bloc spécifique)
-                long fileLength = file.length();
-                long skipBytes = (long) blockIndex * Serveur.BLOCK_SIZE;
-    
-                if (skipBytes >= fileLength) {
-                    dos.writeInt(-1);
-                    clientSocket.close();
-                    return;
-                }
-    
-                FileInputStream fis = new FileInputStream(file);
-                fis.skip(skipBytes);
-    
-                int bytesToSend = (int) Math.min(Serveur.BLOCK_SIZE, fileLength - skipBytes);
-                byte[] buffer = new byte[bytesToSend];
-                int read = fis.read(buffer);
-    
-                dos.writeInt(read);
-                dos.write(buffer, 0, read);
-                dos.flush();
-    
-                System.out.println("Bloc " + blockIndex + " envoyé.");
-                fis.close();
-            } else {
-                // 🔹 Mode classique (fichier entier)
-                dos.writeLong(file.length());
-                FileInputStream fis = new FileInputStream(file);
-                byte[] buffer = new byte[Serveur.BLOCK_SIZE];
-                int bytesRead;
-                while ((bytesRead = fis.read(buffer)) != -1) {
-                    dos.write(buffer, 0, bytesRead);
-                }
-                fis.close();
-    
-                System.out.println("Fichier envoyé : " + fileName);
-    
-                // Vérifier MD5
-                String md5Client = dis.readUTF();
-                String md5Server = Digest.computeMD5(file);
-                System.out.println(" MD5 client : " + md5Client);
-                System.out.println(" MD5 serveur : " + md5Server);
-    
-                if (md5Server.equals(md5Client)) {
-                    dos.writeUTF("MD5_OK");
-                    System.out.println("Client a bien reçu le fichier.");
-                } else {
-                    dos.writeUTF("MD5_FAIL");
-                    System.out.println("Erreur d'intégrité.");
-                }
-            }
-    
-            dis.close();
-            dos.close();
-            clientSocket.close();
-    
-        } catch (Exception e) {
+
+            String hashCommande = inputClient.readUTF();
+            if (hashCommande.startsWith("HASH")) {
+                // Si la commande est de type "HASH", on gère la vérification du hash
+                handleFileHash(inputClient, outputClient, hashCommande);
+            } 
+        } catch (IOException e) {
             e.printStackTrace();
         }
     }
-    
+
+    private void sendFileList(DataOutputStream outputClient) throws IOException {
+        // Envoyer la liste des fichiers disponibles au client
+        outputClient.writeInt(files.length);  // Envoi du nombre de fichiers
+        for (int i = 0; i < files.length; i++) {
+            if (files[i].isFile()) {
+                outputClient.writeUTF(files[i].getName()); // Nom du fichier
+                outputClient.writeLong(files[i].length()); // Taille du fichier
+            }
+        }
+    }
+
+    private void handleFileHash(DataInputStream inputClient, DataOutputStream outputClient, String commande) throws IOException {
+        // Recevoir et traiter le hash envoyé par le client
+        String fileIndex = commande.split(" ")[1];  // Extraire l'index du fichier
+        int index = Integer.parseInt(fileIndex);
+        File fichier = files[index];
+
+        String hashServeur;
+        try {
+            hashServeur = bytesToHex(Digest.md5(fichier.getPath()));
+            String hashClient = inputClient.readUTF(); // Hash reçu du client
+
+        // Comparer les hashes
+        if (hashServeur.equals(hashClient)) {
+            System.out.println("Le fichier a bien été téléchargé et vérifié.");
+            // Ajout du client à la liste des clients de confiance
+            String clientInfo = socket.getInetAddress().getHostAddress();
+            trustedClients.add(clientInfo);
+            System.out.println("Ajouté à la liste des clients de confiance : " + clientInfo);
+            outputClient.writeUTF("OK");
+        } else {
+            System.out.println("Le fichier a été corrompu pendant le transfert.");
+            outputClient.writeUTF("ERROR");
+        }
+        } catch (Exception e) {
+            // TODO Auto-generated catch block
+            e.printStackTrace();
+        }
+    }
+
+    private void handleDownload(String commande, DataOutputStream outputClient) throws IOException {
+        // Extraire l'index du fichier et l'index du bloc à télécharger
+        String[] parts = commande.split(" ");
+        int fileIndex = Integer.parseInt(parts[1]);
+        int blockIndex = Integer.parseInt(parts[2]);
+
+        File fichier = files[fileIndex];
+        long fileSize = fichier.length();
+        long startByte = blockIndex * tailleBloc;
+        long endByte = Math.min(startByte + tailleBloc, fileSize);
+
+        // Envoi du nom et de la taille du bloc
+        outputClient.writeInt((int)(endByte - startByte)); // Taille du bloc
+
+        // Lecture du fichier et envoi du bloc au client
+        try (FileInputStream fis = new FileInputStream(fichier)) {
+            byte[] buffer = new byte[tailleBloc];
+            fis.skip(startByte); // Sauter jusqu'à l'index du bloc
+            int bytesRead = fis.read(buffer, 0, (int)(endByte - startByte));
+            outputClient.write(buffer, 0, bytesRead); // Envoi du bloc au client
+            System.out.println("Bloc " + blockIndex + " du fichier " + fichier.getName() + " envoyé.");
+        }
+    }
+
+    public static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
 }
+

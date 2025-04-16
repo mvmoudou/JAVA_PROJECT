@@ -1,51 +1,61 @@
-package Version_1;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.security.MessageDigest;
-
 /**
- * Classe utilitaire pour le calcul du hash MD5 d'un fichier.
- * Utilisée pour vérifier l'intégrité des fichiers transférés entre client et serveur.
- *
- * Méthode principale : {@code computeMD5(File file)}.
- *
- * Exemple d'utilisation :
- * <pre>{@code
- * String hash = Digest.computeMD5(new File("chemin/vers/fichier.txt"));
- * }</pre>
+ * Computing MD5 and SHA256 hashes
  */
-public class Digest {
+
+import java.io.*;
+import java.security.*;
+import java.math.BigInteger;
+
+public class Digest{
+    /* 
+     * Given a file name and the algorithm to be used, it returns a byte array
+     * with the digest. 
+     */
+    public static byte[] diggest(String fname, String algorithm)
+            throws IOException, NoSuchAlgorithmException{
+            byte[] digest=null; // the result
+            FileInputStream in = new FileInputStream(fname);
+            // Selecting the algorithm to be used
+            MessageDigest sha = MessageDigest.getInstance(algorithm);
+            // Reading the file
+            DigestInputStream din = new DigestInputStream(in, sha);
+            while (din.read() != -1) ; // read entire file
+            din.close();
+            // Computing the digest
+            digest = sha.digest();
+            return digest;
+    }
+
+    // Computing MD5
+    public static byte[] md5(String fname)
+            throws IOException, NoSuchAlgorithmException{
+            return Digest.diggest(fname, "MD5");
+    }
+
+    // Computing SHA-256
+    public static byte[] sha256(String fname)
+            throws IOException, NoSuchAlgorithmException{
+            return Digest.diggest(fname, "SHA-256");
+    }
 
     /**
-     * Calcule le hash MD5 d'un fichier donné.
-     *
-     * @param file Le fichier dont on veut calculer le hash.
-     * @return La chaîne hexadécimale du hash MD5, ou une chaîne vide en cas d'erreur.
+     * A main for testing purposes. 
+     * It is expected that the first argument is the path to the file to be
+     * analyzed. 
      */
-    public static String computeMD5(File file) {
-        try {
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            FileInputStream fis = new FileInputStream(file);
-            byte[] buffer = new byte[1024];
-            int bytesRead;
 
-            while ((bytesRead = fis.read(buffer)) != -1) {
-                md.update(buffer, 0, bytesRead);
-            }
-
-            fis.close();
-            byte[] hashBytes = md.digest();
-
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hashBytes) {
-                sb.append(String.format("%02x", b));
-            }
-
-            return sb.toString();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "";
+    public static void main(String arg[]){
+        if (arg.length !=1){
+            System.out.println("[Error] No input file.\n Try java Digest filename");
+            return;
+        }
+        try{
+            String hex = new BigInteger(1, Digest.md5(arg[0])).toString(16);
+            System.out.println(hex);
+        } catch (IOException ex) {
+            System.err.println(ex);
+        } catch (NoSuchAlgorithmException ex) {
+            System.err.println(ex);
         }
     }
 }
