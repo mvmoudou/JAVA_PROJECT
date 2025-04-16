@@ -56,7 +56,7 @@ public class Client {
             pool.shutdown();
             
             // Sauvegarde du fichier
-            File dossier = new File("Fichiers");
+            File dossier = new File("Downloads");
             if (!dossier.exists()) {
                 dossier.mkdirs();
             }
