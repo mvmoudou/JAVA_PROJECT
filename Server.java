@@ -6,6 +6,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.logging.Logger;
 
 public class Server {
     private ExecutorService pool;
@@ -14,6 +15,7 @@ public class Server {
     private ServerSocket server;
     private File[] files;
     private final Set<String> trustedClients = Collections.synchronizedSet(new HashSet<>());
+    private static final Logger logger = Log.setup("Client", "client.log");
 
 
     public Server(int port, int poolSize) {
@@ -34,6 +36,7 @@ public class Server {
         try {
             while(true) {
                 this.pool.execute(new Slave(server.accept(), this.files, this.trustedClients));
+                logger.info("Un client s'est connecte au serveur");
                 System.out.println("Un client s'est connecte au serveur");
             }
         } catch (Exception e) {

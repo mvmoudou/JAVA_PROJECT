@@ -70,11 +70,13 @@ public class Client {
                 fos.write(fichierRecu);
             }
             System.out.println("Fichier téléchargé et enregistré sous : " + nomLocal);
+            logger.info("Fichier téléchargé et enregistré sous : " + nomLocal);
             
             // Envoi du hash pour vérification (réutilisation du socket initial)
             byte[] hash = Digest.md5(nomLocal);
             String hashHex = bytesToHex(hash);
             System.out.println("Hash du fichier téléchargé : " + hashHex);
+            logger.info("Hash du fichier téléchargé : " + hashHex);
             
             output.writeUTF("HASH " + fileIndex);  // Envoi de la commande HASH
             output.writeUTF(hashHex);  // Envoi du hash au serveur
