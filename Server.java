@@ -53,7 +53,7 @@ public class Server {
 
     public static void main(String[] args) {
         int port = 12345;
-        int poolSize = 10;
+        int poolSize = 3;
         Server server = new Server(port, poolSize);
         server.manageRequest();
     }
