@@ -15,7 +15,7 @@ public class Server {
         this.port = port;
         this.pool = Executors.newFixedThreadPool(poolSize);
         this.trustedClients = new CopyOnWriteArrayList<>();
-        this.clientSemaphore = new Semaphore(poolSize-1);
+        this.clientSemaphore = new Semaphore(poolSize/4);
 
         // Charge les fichiers à partir du répertoire "fichiers"
         File dir = new File("Fichiers");
@@ -88,7 +88,7 @@ public class Server {
 
     public static void main(String[] args) throws IOException {
         int port = 12345; // Port du serveur
-        int poolSize = 3;  // Taille du pool de threads
+        int poolSize = 10;  // Taille du pool de threads
         Server server = new Server(port, poolSize);
         server.start();
     }
