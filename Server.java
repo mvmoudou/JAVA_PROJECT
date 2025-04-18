@@ -41,29 +41,28 @@ public class Server {
             String type = input.readUTF();
 
             if ("CLIENT_MAIN".equals(type)) {
-                clientSemaphore.acquire(); // Bloque si trop de clients principaux
+                clientSemaphore.acquire();
                 logger.info("-----------CLIENT_MAIN connecté : " + socket.getInetAddress());
-
+            
                 pool.execute(() -> {
                     try {
-                        new Slave(socket, files, trustedClients).run();
+                        new ClientSlave(socket, files, trustedClients).run();
                     } catch (Exception e) {
                         logger.warning("Erreur CLIENT_MAIN : " + e.getMessage());
                     } finally {
-                        clientSemaphore.release(); // Libère une place
+                        clientSemaphore.release();
                         try {
                             socket.close();
                         } catch (IOException ignored) {}
                         logger.info("-----------CLIENT_MAIN terminé : " + socket.getInetAddress());
                     }
                 });
-
             } else if ("BLOCK_DOWNLOAD".equals(type)) {
                 logger.info("-----------BLOCK_DOWNLOAD connecté : " + socket.getInetAddress());
-
+            
                 pool.execute(() -> {
                     try {
-                        new Slave(socket, files, trustedClients).run();
+                        new BlockSlave(socket, files).run();
                     } catch (Exception e) {
                         logger.warning("Erreur BLOCK_DOWNLOAD : " + e.getMessage());
                     } finally {
@@ -73,8 +72,8 @@ public class Server {
                         logger.info("-----------BLOCK_DOWNLOAD terminé : " + socket.getInetAddress());
                     }
                 });
-
-            } else {
+            }
+             else {
                 logger.warning("Client inconnu rejeté : " + socket.getInetAddress());
                 socket.close();
             }
