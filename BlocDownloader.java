@@ -24,13 +24,20 @@ public class BlocDownloader implements Callable<byte[]> {
             DataOutputStream out = new DataOutputStream(socket.getOutputStream());
             DataInputStream in = new DataInputStream(socket.getInputStream())
         ) {
+            out.writeUTF("BLOCK_DOWNLOAD");
+            out.flush();
+
+
             out.writeUTF("REQUIRE " + fileIndex + " " + blocIndex);
+            logger.info("Téléchargement du bloc " + blocIndex + " du fichier " + fileIndex + " depuis le serveur " + serverAddress + ":" + serverPort);
             int tailleBloc = in.readInt();
+            logger.info("Taille du bloc " + blocIndex + " : " + tailleBloc + " octets");
             byte[] buffer = new byte[tailleBloc];
             in.readFully(buffer);
             return buffer;
         } catch (Exception e) {
             System.err.println("Erreur lors du téléchargement du bloc " + blocIndex);
+            logger.warning(serverAddress + ":" + serverPort + " - Erreur lors du téléchargement du bloc " + blocIndex + ": " + e.getMessage());
             e.printStackTrace();
             return new byte[0];
         }

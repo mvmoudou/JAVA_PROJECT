@@ -1,62 +1,96 @@
-
-import java.io.File;
-import java.net.ServerSocket;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.io.*;
+import java.net.*;
+import java.util.concurrent.*;
 import java.util.logging.Logger;
 
 public class Server {
-    private ExecutorService pool;
-	private int port;
-	private int poolSize;
-    private ServerSocket server;
-    private File[] files;
-    private final Set<String> trustedClients = Collections.synchronizedSet(new HashSet<>());
-    private static final Logger logger = Log.setup("Server", "server.log");
-
+    private final int port;
+    private final ExecutorService pool;
+    private final File[] files;
+    private final CopyOnWriteArrayList<String> trustedClients;
+    private final Semaphore clientSemaphore;
+    private final Logger logger = Logger.getLogger("Server");
 
     public Server(int port, int poolSize) {
         this.port = port;
-        this.poolSize = poolSize;
         this.pool = Executors.newFixedThreadPool(poolSize);
-        File dir = new File("fichiers");
-        this.files = dir.listFiles();
-        try {
-            this.server = new ServerSocket(port);
-            System.out.println("Serveur demarre sur le port " + port);
-        } catch (Exception e) {
-            e.printStackTrace();
+        this.trustedClients = new CopyOnWriteArrayList<>();
+        this.clientSemaphore = new Semaphore(poolSize-1);
+
+        // Charge les fichiers à partir du répertoire "fichiers"
+        File dir = new File("Fichiers");
+        if (!dir.exists()) {
+            dir.mkdir(); // Crée le répertoire s'il n'existe pas
+        }
+        this.files = dir.listFiles(); // Liste les fichiers dans le répertoire
+    }
+
+    public void start() throws IOException {
+        ServerSocket serverSocket = new ServerSocket(port);
+        logger.info("Serveur démarré sur le port " + port);
+
+        while (true) {
+            Socket socket = serverSocket.accept();
+            new Thread(() -> handleConnection(socket)).start();
         }
     }
 
-    public void manageRequest() {
-        int T = 5;
-        double P = 0.3;
+    private void handleConnection(Socket socket) {
         try {
-            while(true) {
-                this.pool.execute(new Slave(server.accept(), this.files, this.trustedClients, T, P));
-                logger.info("Un client s'est connecte au serveur");
-                System.out.println("Un client s'est connecte au serveur");
+            DataInputStream input = new DataInputStream(socket.getInputStream());
+            String type = input.readUTF();
+
+            if ("CLIENT_MAIN".equals(type)) {
+                clientSemaphore.acquire(); // Bloque si trop de clients principaux
+                logger.info("-----------CLIENT_MAIN connecté : " + socket.getInetAddress());
+
+                pool.execute(() -> {
+                    try {
+                        new Slave(socket, files, trustedClients).run();
+                    } catch (Exception e) {
+                        logger.warning("Erreur CLIENT_MAIN : " + e.getMessage());
+                    } finally {
+                        clientSemaphore.release(); // Libère une place
+                        try {
+                            socket.close();
+                        } catch (IOException ignored) {}
+                        logger.info("-----------CLIENT_MAIN terminé : " + socket.getInetAddress());
+                    }
+                });
+
+            } else if ("BLOCK_DOWNLOAD".equals(type)) {
+                logger.info("-----------BLOCK_DOWNLOAD connecté : " + socket.getInetAddress());
+
+                pool.execute(() -> {
+                    try {
+                        new Slave(socket, files, trustedClients).run();
+                    } catch (Exception e) {
+                        logger.warning("Erreur BLOCK_DOWNLOAD : " + e.getMessage());
+                    } finally {
+                        try {
+                            socket.close();
+                        } catch (IOException ignored) {}
+                        logger.info("-----------BLOCK_DOWNLOAD terminé : " + socket.getInetAddress());
+                    }
+                });
+
+            } else {
+                logger.warning("Client inconnu rejeté : " + socket.getInetAddress());
+                socket.close();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+
+        } catch (IOException | InterruptedException e) {
+            logger.warning("Erreur de lecture de type client : " + e.getMessage());
+            try {
+                socket.close();
+            } catch (IOException ignored) {}
         }
     }
 
-    public void afficherClientsDeConfiance() {
-        System.out.println("Clients de confiance :");
-        for (String client : trustedClients) {
-            System.out.println("- " + client);
-        }
-    }
-
-    public static void main(String[] args) {
-        int port = 12345;
-        int poolSize = 3;
+    public static void main(String[] args) throws IOException {
+        int port = 12345; // Port du serveur
+        int poolSize = 3;  // Taille du pool de threads
         Server server = new Server(port, poolSize);
-        server.manageRequest();
+        server.start();
     }
 }

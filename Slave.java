@@ -1,23 +1,25 @@
 import java.io.*;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
 public class Slave implements Runnable {
     private Socket socket;
     private File[] files;
     private static final int tailleBloc = 1024; // Taille d'un bloc de téléchargement (en octets)
-    private Set<String> trustedClients;
+    private CopyOnWriteArrayList<String> trustedClients;
     private static final Logger logger = Log.setup("Slave", "slave.log");
-    private int T;
-    private double P;
 
-    public Slave(Socket socket, File[] files, Set<String> trustedClients, int T, double P) {
+    public Slave(Socket socket, File[] files, CopyOnWriteArrayList<String> trustedClients) {
         this.socket = socket;
         this.files = files;
         this.trustedClients = trustedClients;
-        this.T = T; // Nombre de téléchargements simultanés
-        this.P = P; // Probabilité de corruption
+    }
+
+    public Slave(Socket socket, File[] files) {
+        this.socket = socket;
+        this.files = files;
     }
 
     @Override
@@ -26,6 +28,7 @@ public class Slave implements Runnable {
             DataOutputStream outputClient = new DataOutputStream(socket.getOutputStream());
             DataInputStream inputClient = new DataInputStream(socket.getInputStream())
         ) {
+            //Interruption thread
             // Lire la demande du client
             String commande = inputClient.readUTF();
             logger.info(commande + " : " + socket.getInetAddress().getHostAddress());
@@ -45,6 +48,7 @@ public class Slave implements Runnable {
                 handleFileHash(inputClient, outputClient, hashCommande);
             } 
         } catch (IOException e) {
+            logger.warning("Erreur Slave : " + e.getMessage());
             e.printStackTrace();
         }
     }

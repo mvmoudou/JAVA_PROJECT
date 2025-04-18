@@ -16,6 +16,9 @@ public class Client {
         DataInputStream input = new DataInputStream(socket.getInputStream());
         Scanner sc = new Scanner(System.in)
         ) {
+            output.writeUTF("CLIENT_MAIN");
+            output.flush();
+
             // Demande de la liste des fichiers
             output.writeUTF("LIST");
             
@@ -34,6 +37,10 @@ public class Client {
             
             System.out.print("Entrez le numéro du fichier à télécharger : ");
             int fileIndex = Integer.parseInt(sc.nextLine());
+            if (fileIndex < 0 || fileIndex >= noms.size()) {
+                System.out.println("Indice invalide.");
+                return;
+            }
             String nomFichier = noms.get(fileIndex);
             long tailleFichier = tailles.get(fileIndex);
             int nbBlocs = (int) Math.ceil((double) tailleFichier / tailleBloc);
@@ -66,9 +73,9 @@ public class Client {
             try (FileOutputStream fos = new FileOutputStream(nomLocal)) {
                 fos.write(fichierRecu);
             }
-            try (FileOutputStream fos = new FileOutputStream(nomLocal)) {
-                fos.write(fichierRecu);
-            }
+            // try (FileOutputStream fos = new FileOutputStream(nomLocal)) {
+            //     fos.write(fichierRecu);
+            // }
             System.out.println("Fichier téléchargé et enregistré sous : " + nomLocal);
             logger.info("Fichier téléchargé et enregistré sous : " + nomLocal);
             
@@ -82,6 +89,7 @@ public class Client {
             output.writeUTF(hashHex);  // Envoi du hash au serveur
             
         } catch (Exception e) {
+            logger.warning("Erreur Client : " + e.getMessage());
             e.printStackTrace();
         }
     }
